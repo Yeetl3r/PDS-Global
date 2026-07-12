@@ -25,5 +25,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 
-# prisma
-/prisma/generated
+# prisma (client is regenerated via postinstall)
+/lib/generated

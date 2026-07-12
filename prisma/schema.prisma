@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum LeadType {
+  quick_apply
+  personal_loan
+  credit_score
+  partner
+  contact
+}
+
+enum LeadStatus {
+  new
+  contacted
+  in_progress
+  closed
+  spam
+}
+
+/// One row per captured lead, regardless of which form it came from.
+/// The full submitted form lives in `payload` (already server-validated);
+/// consent provenance is stored explicitly — this is a lending-adjacent site.
+model Lead {
+  id      String     @id @default(cuid())
+  refCode String     @unique
+  type    LeadType
+  payload Json
+  status  LeadStatus @default(new)
+
+  // Attribution
+  source      String?
+  utmSource   String?
+  utmMedium   String?
+  utmCampaign String?
+  utmTerm     String?
+  utmContent  String?
+
+  // Request context — IP is stored only as a salted hash
+  ipHash    String?
+  userAgent String?
+
+  // Consent provenance
+  consentGiven       Boolean   @default(false)
+  consentTextVersion String?
+  consentTimestamp   DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([type, createdAt])
+  @@index([ipHash, createdAt])
+  @@index([status, createdAt])
+}
+
+/// Grievance / consent-revocation intake (not a sales lead).
+/// The legal pages promise acknowledgement within 48 hours.
+model GrievanceTicket {
+  id        String   @id @default(cuid())
+  refCode   String   @unique
+  kind      GrievanceKind
+  payload   Json
+  status    LeadStatus @default(new)
+  ipHash    String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([kind, createdAt])
+}
+
+enum GrievanceKind {
+  grievance
+  consent_revocation
+}
