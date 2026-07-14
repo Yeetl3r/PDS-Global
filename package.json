@@ -1,7 +1,28 @@
 {
   "name": "pds-global",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
+  "description": "Loan-aggregator web platform and lead-capture engine for PDS Global Financial Services — Next.js, TypeScript, Tailwind and Prisma.",
+  "keywords": [
+    "nextjs",
+    "typescript",
+    "tailwindcss",
+    "prisma",
+    "postgresql",
+    "react-hook-form",
+    "zod",
+    "fintech",
+    "loan-aggregator",
+    "lead-capture"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/varadharajanv0310/PDS-Global.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
