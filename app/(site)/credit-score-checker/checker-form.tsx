@@ -5,7 +5,8 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { telHref, waHref } from "@/lib/config";
+import { telHref } from "@/lib/config";
+import { postLead, type LeadResult } from "@/lib/submit-lead";
 import { routes } from "@/lib/routes";
 
 const schema = z.object({
@@ -31,16 +32,15 @@ const schema = z.object({
 
 type CheckerData = z.infer<typeof schema>;
 
-// TODO(backend): POST /api/leads/credit-score — replace this client-side stub
-// with the real API call. The success UI consumes only this return value.
-async function submitLead(
-  data: CheckerData,
-): Promise<{ refCode: string; whatsappUrl: string }> {
-  const refCode = `CS-${100000 + Math.floor(Math.random() * 900000)}`;
-  const whatsappUrl = waHref(
-    `Hi PDS Global! I'd like my free credit score check. Ref ${refCode}. Name: ${data.nm.trim()}.`,
-  );
-  return { refCode, whatsappUrl };
+/** Persists the lead server-side; the server returns the real reference
+ *  code and WhatsApp URL the success UI renders. */
+async function submitLead(data: CheckerData): Promise<LeadResult> {
+  return postLead("credit-score", {
+    name: data.nm.trim(),
+    pan: data.pan,
+    mobile: data.mob,
+    consent: data.consent,
+  });
 }
 
 const inputClass = (bad: boolean) =>
@@ -57,11 +57,12 @@ export function CheckerForm() {
     whatsappUrl: string;
     firstName: string;
   } | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
-    formState: { errors, touchedFields, isValid, submitCount },
+    formState: { errors, touchedFields, isValid, isSubmitting, submitCount },
   } = useForm<CheckerData>({
     resolver: zodResolver(schema),
     mode: "onChange",
@@ -77,12 +78,21 @@ export function CheckerForm() {
   const mobReg = register("mob");
 
   const onSubmit = handleSubmit(async (data) => {
-    const { refCode, whatsappUrl } = await submitLead(data);
-    setDone({
-      refCode,
-      whatsappUrl,
-      firstName: data.nm.trim().split(" ")[0],
-    });
+    setSubmitError(null);
+    try {
+      const { refCode, whatsappUrl } = await submitLead(data);
+      setDone({
+        refCode,
+        whatsappUrl,
+        firstName: data.nm.trim().split(" ")[0],
+      });
+    } catch (err) {
+      setSubmitError(
+        err instanceof Error
+          ? err.message
+          : "We couldn't save your details just now. Please retry, or WhatsApp us directly.",
+      );
+    }
   });
 
   if (done) {
@@ -239,15 +249,20 @@ export function CheckerForm() {
         )}
         <button
           type="submit"
-          disabled={!isValid}
+          disabled={!isValid || isSubmitting}
           className={`mt-6 flex w-full items-center justify-center gap-[9px] rounded-full border px-[30px] py-4 text-[15.5px] font-bold whitespace-nowrap transition-[transform,filter] duration-[.18s] ${
-            isValid
+            isValid && !isSubmitting
               ? "cursor-pointer border-gold-deep bg-[linear-gradient(180deg,#E9CF79,#BB932F_55%,#A5801F)] text-[#241B07] shadow-[inset_0_1px_0_rgba(255,255,255,.55),0_2px_12px_rgba(140,101,21,.3)]"
               : "cursor-not-allowed border-[#E2D8BF] bg-[#EFE9D8] text-[#A69D84]"
           }`}
         >
-          Get my free score →
+          {isSubmitting ? "Submitting…" : "Get my free score →"}
         </button>
+        {submitError && (
+          <p role="alert" className="mt-3 text-[12.5px] text-[#B23B27]">
+            {submitError}
+          </p>
+        )}
       </div>
     </form>
   );

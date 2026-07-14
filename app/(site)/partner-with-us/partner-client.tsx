@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { telHref, waHref } from "@/lib/config";
+import { telHref } from "@/lib/config";
+import { postLead, type LeadResult } from "@/lib/submit-lead";
 import { routes } from "@/lib/routes";
 
 /* ————— DSA lead form ————— */
@@ -33,15 +34,16 @@ const leadSchema = z.object({
 
 type LeadValues = z.infer<typeof leadSchema>;
 
-// TODO(backend): POST /api/leads/partner — swap this stub for the real API call.
-async function submitLead(
-  data: LeadValues,
-): Promise<{ refCode: string; whatsappUrl: string }> {
-  const refCode = "PT-" + (100000 + Math.floor(Math.random() * 900000));
-  const whatsappUrl = waHref(
-    `Hi PDS Global! I applied to become a lending partner. Ref ${refCode}. ${data.fullName.trim()}, ${data.profession}, ${data.city.trim()}.`,
-  );
-  return { refCode, whatsappUrl };
+/** Persists the application server-side; the server returns the real
+ *  reference code and WhatsApp URL the success UI renders. */
+async function submitLead(data: LeadValues): Promise<LeadResult> {
+  return postLead("partner", {
+    name: data.fullName.trim(),
+    mobile: data.mobile,
+    email: data.email.trim(),
+    profession: data.profession,
+    city: data.city.trim(),
+  });
 }
 
 const professions = [
@@ -70,11 +72,12 @@ export function PartnerLeadForm() {
     whatsappUrl: string;
     firstName: string;
   } | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
-    formState: { errors, isValid },
+    formState: { errors, isValid, isSubmitting },
   } = useForm<LeadValues>({
     resolver: zodResolver(leadSchema),
     mode: "onTouched",
@@ -88,12 +91,21 @@ export function PartnerLeadForm() {
   });
 
   const onSubmit = async (data: LeadValues) => {
-    const { refCode, whatsappUrl } = await submitLead(data);
-    setSuccess({
-      refCode,
-      whatsappUrl,
-      firstName: data.fullName.trim().split(" ")[0],
-    });
+    setSubmitError(null);
+    try {
+      const { refCode, whatsappUrl } = await submitLead(data);
+      setSuccess({
+        refCode,
+        whatsappUrl,
+        firstName: data.fullName.trim().split(" ")[0],
+      });
+    } catch (err) {
+      setSubmitError(
+        err instanceof Error
+          ? err.message
+          : "We couldn't save your application just now. Please retry, or WhatsApp us directly.",
+      );
+    }
   };
 
   const nameReg = register("fullName");
@@ -282,11 +294,16 @@ export function PartnerLeadForm() {
         </div>
         <button
           type="submit"
-          disabled={!isValid}
+          disabled={!isValid || isSubmitting}
           className="mt-6 flex w-full cursor-pointer items-center justify-center gap-[9px] rounded-full border border-gold-deep bg-[linear-gradient(180deg,#E9CF79,#BB932F_55%,#A5801F)] px-[30px] py-4 text-[15.5px] font-bold whitespace-nowrap text-[#241B07] shadow-[inset_0_1px_0_rgba(255,255,255,.55),0_2px_12px_rgba(140,101,21,.3)] transition-[transform,filter] duration-[.18s] disabled:cursor-not-allowed disabled:border-[#E2D8BF] disabled:bg-[#EFE9D8] disabled:bg-none disabled:text-[#A69D84] disabled:shadow-none"
         >
-          Apply to partner →
+          {isSubmitting ? "Submitting…" : "Apply to partner →"}
         </button>
+        {submitError && (
+          <p role="alert" className="mt-3 text-[12.5px] text-[#B23B27]">
+            {submitError}
+          </p>
+        )}
         <p className="mt-3.5 text-xs leading-[1.7] text-caption">
           By applying you agree to our <Link href={routes.terms}>terms</Link>{" "}
           and <Link href={routes.privacy}>privacy policy</Link>. Our

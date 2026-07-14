@@ -27,7 +27,10 @@ export const panSchema = z
 export const pincodeSchema = z
   .string()
   .trim()
-  .regex(/^\d{6}$/, "Enter the 6-digit pincode of your current address.");
+  .regex(
+    /^[1-9][0-9]{5}$/,
+    "Enter the 6-digit pincode of your current address.",
+  );
 
 /** DD/MM/YYYY, age 21–55 as of today. */
 export const dobSchema = z
@@ -82,7 +85,8 @@ export const quickApplySchema = z.object({
 /** 2. Full personal loan application. */
 export const personalLoanSchema = z.object({
   firstName: nameField("Enter your first name as on PAN."),
-  lastName: nameField("Enter your last name as on PAN."),
+  // Single-letter surnames are common — the form allows them too.
+  lastName: z.string().trim().min(1, "Enter your surname.").max(60),
   pan: panSchema,
   dob: dobSchema,
   pincode: pincodeSchema,

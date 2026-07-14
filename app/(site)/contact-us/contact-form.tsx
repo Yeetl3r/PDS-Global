@@ -5,7 +5,8 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { telHref, waHref } from "@/lib/config";
+import { telHref } from "@/lib/config";
+import { postLead, type LeadResult } from "@/lib/submit-lead";
 import { routes } from "@/lib/routes";
 
 const topics = [
@@ -41,16 +42,16 @@ const schema = z.object({
 
 type ContactData = z.infer<typeof schema>;
 
-// TODO(backend): POST /api/leads/contact — replace this client-side stub
-// with the real API call. The success UI consumes only this return value.
-async function submitLead(
-  data: ContactData,
-): Promise<{ refCode: string; whatsappUrl: string }> {
-  const refCode = `CT-${100000 + Math.floor(Math.random() * 900000)}`;
-  const whatsappUrl = waHref(
-    `Hi PDS Global! Ref ${refCode}. ${data.topic || "Enquiry"}. ${data.msg.trim()} — ${data.nm.trim()}, +91 ${data.mob}`,
-  );
-  return { refCode, whatsappUrl };
+/** Persists the message server-side; the server returns the real reference
+ *  code and WhatsApp URL the success UI renders. */
+async function submitLead(data: ContactData): Promise<LeadResult> {
+  return postLead("contact", {
+    name: data.nm.trim(),
+    mobile: data.mob,
+    email: data.em.trim(),
+    topic: data.topic,
+    message: data.msg.trim(),
+  });
 }
 
 const inputClass = (bad: boolean) =>
@@ -67,11 +68,19 @@ export function ContactForm() {
     whatsappUrl: string;
     firstName: string;
   } | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
-    formState: { errors, touchedFields, dirtyFields, isValid, submitCount },
+    formState: {
+      errors,
+      touchedFields,
+      dirtyFields,
+      isValid,
+      isSubmitting,
+      submitCount,
+    },
   } = useForm<ContactData>({
     resolver: zodResolver(schema),
     mode: "onChange",
@@ -90,12 +99,21 @@ export function ContactForm() {
   const msgReg = register("msg");
 
   const onSubmit = handleSubmit(async (data) => {
-    const { refCode, whatsappUrl } = await submitLead(data);
-    setDone({
-      refCode,
-      whatsappUrl,
-      firstName: data.nm.trim().split(" ")[0],
-    });
+    setSubmitError(null);
+    try {
+      const { refCode, whatsappUrl } = await submitLead(data);
+      setDone({
+        refCode,
+        whatsappUrl,
+        firstName: data.nm.trim().split(" ")[0],
+      });
+    } catch (err) {
+      setSubmitError(
+        err instanceof Error
+          ? err.message
+          : "We couldn't send your message just now. Please retry, or WhatsApp us directly.",
+      );
+    }
   });
 
   if (done) {
@@ -276,15 +294,20 @@ export function ContactForm() {
         </div>
         <button
           type="submit"
-          disabled={!isValid}
+          disabled={!isValid || isSubmitting}
           className={`mt-6 flex w-full items-center justify-center gap-[9px] rounded-full border px-[30px] py-4 text-[15.5px] font-bold whitespace-nowrap transition-[transform,filter] duration-[.18s] ${
-            isValid
+            isValid && !isSubmitting
               ? "cursor-pointer border-gold-deep bg-[linear-gradient(180deg,#E9CF79,#BB932F_55%,#A5801F)] text-[#241B07] shadow-[inset_0_1px_0_rgba(255,255,255,.55),0_2px_12px_rgba(140,101,21,.3)]"
               : "cursor-not-allowed border-[#E2D8BF] bg-[#EFE9D8] text-[#A69D84]"
           }`}
         >
-          Send message →
+          {isSubmitting ? "Sending…" : "Send message →"}
         </button>
+        {submitError && (
+          <p role="alert" className="mt-3 text-[12.5px] text-[#B23B27]">
+            {submitError}
+          </p>
+        )}
         <p className="mt-3.5 text-xs leading-[1.7] text-caption">
           By sending this you agree to our <Link href={routes.terms}>terms</Link>{" "}
           and <Link href={routes.privacy}>privacy policy</Link>. We&apos;ll

@@ -5,7 +5,8 @@ import { useEffect, useState, type ChangeEvent } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { config, telHref, waHref } from "@/lib/config";
+import { config, telHref } from "@/lib/config";
+import { postLead, type LeadResult } from "@/lib/submit-lead";
 import { routes } from "@/lib/routes";
 
 /* ——— helpers ——— */
@@ -138,28 +139,23 @@ type FormValues = z.infer<typeof schema>;
 type TextField = "fn" | "ln" | "pan" | "dob" | "pin" | "co" | "inc" | "mob" | "amt";
 
 /* ——— submit ———
- * TODO(backend): POST /api/leads/personal-loan — replace this client-side stub
- * with the real API call. The success UI consumes only this function's return.
+ * Persists the application server-side: the API re-validates, stores the
+ * lead and returns the real reference code + WhatsApp handoff URL.
  */
-async function submitLead(
-  data: FormValues,
-): Promise<{ refCode: string; whatsappUrl: string }> {
-  const refCode = "ML-" + (100000 + Math.floor(Math.random() * 900000));
-  const amtN = Number(digits(data.amt)) || 0;
-  const whatsappUrl = waHref(
-    "Hi PDS Global! I've submitted my personal loan application. Ref " +
-      refCode +
-      ". Name: " +
-      data.fn.trim() +
-      " " +
-      data.ln.trim() +
-      ". Loan: ₹" +
-      fmt(amtN) +
-      " for " +
-      data.ten +
-      " months. Please take it forward.",
-  );
-  return { refCode, whatsappUrl };
+async function submitLead(data: FormValues): Promise<LeadResult> {
+  return postLead("personal-loan", {
+    firstName: data.fn.trim(),
+    lastName: data.ln.trim(),
+    pan: data.pan,
+    dob: data.dob,
+    pincode: data.pin,
+    company: data.co.trim(),
+    monthlyIncome: Number(digits(data.inc)),
+    loanAmount: Number(digits(data.amt)),
+    tenureMonths: data.ten,
+    mobile: data.mob,
+    consent: data.consent,
+  });
 }
 
 /* ——— shared styling fragments ——— */
@@ -187,13 +183,14 @@ export default function ApplicationForm() {
     data: FormValues;
   } | null>(null);
   const [dobRange, setDobRange] = useState<{ min?: string; max?: string }>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const {
     register,
     handleSubmit,
     setValue,
     watch,
-    formState: { errors, isValid, submitCount },
+    formState: { errors, isValid, isSubmitting, submitCount },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     mode: "onTouched",
@@ -254,8 +251,17 @@ export default function ApplicationForm() {
   const consentErr = submitCount > 0 && !consentV;
 
   const onSubmit = handleSubmit(async (data) => {
-    const lead = await submitLead(data);
-    setDone({ ...lead, data });
+    setSubmitError(null);
+    try {
+      const lead = await submitLead(data);
+      setDone({ ...lead, data });
+    } catch (err) {
+      setSubmitError(
+        err instanceof Error
+          ? err.message
+          : "We couldn't save your application just now. Please retry, or WhatsApp us directly.",
+      );
+    }
   });
 
   if (done) {
@@ -633,16 +639,21 @@ export default function ApplicationForm() {
 
           <button
             type="submit"
-            disabled={!isValid}
+            disabled={!isValid || isSubmitting}
             className={
               "mt-6 flex w-full items-center justify-center gap-[9px] rounded-full border px-[30px] py-[17px] text-base font-bold whitespace-nowrap transition-[transform,filter] duration-[.18s] " +
-              (isValid
+              (isValid && !isSubmitting
                 ? "cursor-pointer border-gold-deep bg-[linear-gradient(180deg,#E9CF79,#BB932F_55%,#A5801F)] text-[#241B07] shadow-[inset_0_1px_0_rgba(255,255,255,.55),0_2px_12px_rgba(140,101,21,.3)]"
                 : "cursor-not-allowed border-[#E2D8BF] bg-[#EFE9D8] text-[#A69D84]")
             }
           >
-            Submit application →
+            {isSubmitting ? "Submitting…" : "Submit application →"}
           </button>
+          {submitError && (
+            <p role="alert" className="mt-3 text-center text-[12.5px] text-[#B23B27]">
+              {submitError}
+            </p>
+          )}
           <p className="mt-4 text-center font-mono text-[10px] leading-[1.7] tracking-[.1em] text-faint">
             SANCTION RESTS WITH PARTNER LENDERS · OFFERS DEPEND ON ELIGIBILITY
             AND CREDIT PROFILE

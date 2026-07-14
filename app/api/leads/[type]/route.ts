@@ -185,7 +185,10 @@ export async function POST(
   const attr = attribution.success ? attribution.data : {};
 
   const db = getDb();
-  const consentGiven = payload.consent === true;
+  // Personal-loan and credit-score forms have an explicit checkbox (validated
+  // `true` above); the other forms present consent-by-submission copy next to
+  // the button. Either way a validated submission carries consent — record it.
+  const consentGiven = true;
 
   // refCode is unique — retry a few times on the (rare) collision.
   let lead: { refCode: string } | null = null;

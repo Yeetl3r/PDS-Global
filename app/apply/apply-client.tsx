@@ -5,8 +5,9 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { telHref, waHref } from "@/lib/config";
+import { telHref } from "@/lib/config";
 import { routes } from "@/lib/routes";
+import { postLead, type LeadResult } from "@/lib/submit-lead";
 
 const mobilePattern = /^[6-9][0-9]{9}$/;
 
@@ -21,20 +22,10 @@ const leadSchema = z.object({
 
 type LeadValues = z.infer<typeof leadSchema>;
 
-// TODO(backend): POST /api/leads/apply — swap this client-side stub for the
-// real API call. The success UI consumes only this function's return value.
-async function submitLead(
-  data: LeadValues,
-): Promise<{ refCode: string; whatsappUrl: string }> {
-  const refCode = "ML-" + (100000 + Math.floor(Math.random() * 900000));
-  const whatsappUrl = waHref(
-    "Hi PDS Global! I'd like personal loan offers. My reference is " +
-      refCode +
-      " and my number is +91 " +
-      data.mobile +
-      ".",
-  );
-  return { refCode, whatsappUrl };
+/** Persists the lead server-side; the server returns the real reference
+ *  code and WhatsApp URL the success UI renders. */
+async function submitLead(data: LeadValues): Promise<LeadResult> {
+  return postLead("apply", data);
 }
 
 const faqs = [
@@ -87,12 +78,12 @@ export function ApplyClient() {
     mode: "onChange",
     defaultValues: { mobile: "" },
   });
-  const [result, setResult] = useState<{
-    refCode: string;
-    whatsappUrl: string;
-    mobile: string;
-  } | null>(null);
+  const [result, setResult] = useState<
+    (LeadResult & { mobile: string }) | null
+  >(null);
   const [openFaq, setOpenFaq] = useState(-1);
+  const [sending, setSending] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const mobile = watch("mobile");
   const ok = mobilePattern.test(mobile);
@@ -100,8 +91,20 @@ export function ApplyClient() {
 
   const onSubmit = handleSubmit(
     async (data) => {
-      const { refCode, whatsappUrl } = await submitLead(data);
-      setResult({ refCode, whatsappUrl, mobile: data.mobile });
+      setSending(true);
+      setSubmitError(null);
+      try {
+        const { refCode, whatsappUrl } = await submitLead(data);
+        setResult({ refCode, whatsappUrl, mobile: data.mobile });
+      } catch (err) {
+        setSubmitError(
+          err instanceof Error
+            ? err.message
+            : "We couldn't save your details just now. Please retry, or WhatsApp us directly.",
+        );
+      } finally {
+        setSending(false);
+      }
     },
     () => {
       // On invalid submit, mark the field touched.
@@ -159,20 +162,25 @@ export function ApplyClient() {
                 </div>
                 <button
                   type="submit"
-                  disabled={!ok}
+                  disabled={!ok || sending}
                   className={`inline-flex items-center justify-center gap-[9px] rounded-full border px-[30px] py-4 text-[15.5px] font-bold whitespace-nowrap transition-[transform,box-shadow,filter] duration-[.18s] ${
-                    ok
+                    ok && !sending
                       ? "cursor-pointer border-gold-deep bg-[linear-gradient(180deg,#E9CF79,#BB932F_55%,#A5801F)] text-[#241B07] shadow-[inset_0_1px_0_rgba(255,255,255,.55),0_2px_12px_rgba(140,101,21,.3)]"
                       : "cursor-not-allowed border-[#E2D8BF] bg-[#EFE9D8] text-[#A69D84] shadow-none"
                   }`}
                 >
-                  Get my offers →
+                  {sending ? "Sending…" : "Get my offers →"}
                 </button>
               </div>
               {showHint && (
                 <p role="status" className="mt-3 text-[13px] text-[#B23B27]">
                   Enter the 10-digit mobile you use on WhatsApp — it should
                   start with 6, 7, 8 or 9.
+                </p>
+              )}
+              {submitError && (
+                <p role="alert" className="mt-3 text-[13px] text-[#B23B27]">
+                  {submitError}
                 </p>
               )}
               <p className="mx-auto mt-5 max-w-[52ch] text-[12.5px] leading-[1.7] text-caption">
